@@ -3,6 +3,105 @@
 
 [![Downloads](https://img.shields.io/github/downloads/cisagov/lme/total.svg)]()
 
+# This is a fork of CISA's LME repo
+
+- Originally changed to run on a RHEL 9, DISA STIG'd ISO from access.redhat.com.
+- Designed to run air gapped with no access to internet.
+- Podman runs rootful instead of rootless.
+- Another container is used for a local Elastic EPR repo.
+- All the rest of the documentation from CISA LME applies.
+
+# Packages
+
+Local repo (/repo) created from RHEL 9 ISO via
+https://access.redhat.com/downloads/content/rhel
+
+## /etc/yum.repos.d/local.repo
+```
+[LocalRepo]
+name=Local RHEL 9 Repository
+baseurl=file:///repo
+enabled=1
+gpgcheck=0
+```
+
+`sudo dnf install ansible-core podman -y`
+
+
+# Containers
+
+Just like the RHEL packages, containers will have to be downloaded manually. As of this writing these were used.
+
+```
+docker.elastic.co/elasticsearch/elasticsearch:8.17.4
+docker.elastic.co/kibana/kibana:8.17.4
+docker.elastic.co/beats/elastic-agent:8.17.4
+docker.io/wazuh/wazuh-manager:4.9.1
+docker.io/jertel/elastalert2:latest
+docker.elastic.co/package-registry/distribution:8.17.4
+```
+
+On a machine with internet: 
+`docker pull **container**`
+or
+`podman pull **container**`
+
+## Saving images so they can be used on another machine
+
+Example:
+`podman save -o image1.tar someContainerImage:2.6`
+
+It's possible to save multiple images into one tar file
+`podman save --output images.tar image1 image2 image3`
+
+## Loading images
+Transfer the container images to the containers folder and Ansible will load them automatically.
+
+Current folder as of this version looks like this:
+```
+ls ~/LME/containers/
+elastalert2_latest.tar
+elastic-agent-8.17.4.tar
+elasticsearch-8.17.4.tar
+kibana-8.17.4.tar
+package-reg-distribution-8.17.4.tar
+wazuh-manger-4.9.1.tar
+```
+
+Manual load would be something like:
+`sudo podman load -i <file_name>.tar`
+
+Verify:
+`sudo podman image ls`
+
+# Configs
+
+## lme-environment.env
+
+In the config folder copy the example.env to lme-environment.env
+`cp config/{example,lme-environment}.env`
+
+Grab the host IP and set it to IPVAR in lme-environment.env. Ansible will fail if this is not set.
+Example:
+`IPVAR=192.168.1.20`
+
+In lme-environment.env, also change the STACK_VERSION variable to match the current version of Elastic.
+This build is running 8.17.4 so:
+Example:
+`STACK_VERSION=8.17.4`
+
+## kibana.yml
+This is where the airgapped setting is.
+Also where to point to the fleet registry container.
+
+Example:
+```
+server.host: "0.0.0.0"
+server.publicBaseUrl: "https://10.254.255.20:5601"
+telemetry.enabled: "true"
+xpack.fleet.isAirGapped: "true"
+xpack.fleet.registryUrl: "http://10.254.255.20:8080"
+```
 
 
 # Logging Made Easy 
