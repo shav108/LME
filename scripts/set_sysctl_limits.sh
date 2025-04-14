@@ -6,13 +6,14 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+## Just gonna be root so don't need NON_ROOT_USER
 # Check if NON_ROOT_USER is set
-if [ -z ${NON_ROOT_USER+x} ]; then 
-    echo "var NON_ROOT_USER is unset"
-    exit 1
-else 
-    echo "NON_ROOT_USER='$NON_ROOT_USER'"
-fi
+#if [ -z ${NON_ROOT_USER+x} ]; then 
+    #echo "var NON_ROOT_USER is unset"
+    #exit 1
+#else 
+    #echo "NON_ROOT_USER='$NON_ROOT_USER'"
+#fi
 
 # Function to update or add a sysctl setting
 update_sysctl() {
@@ -40,21 +41,22 @@ update_sysctl "net.core.wmem_max" "7500000"
 # Apply sysctl changes
 sysctl -p
 
+## Shouldn't need NON_ROOT_USER stuff since we gonna do root
 # Update limits.conf
 limits_file="/etc/security/limits.conf"
-limits_entry="$NON_ROOT_USER soft nofile 655360
-$NON_ROOT_USER hard nofile 655360"
+#limits_entry="$NON_ROOT_USER soft nofile 655360
+#$NON_ROOT_USER hard nofile 655360"
 
-if grep -qE "^$NON_ROOT_USER\s+soft\s+nofile" "$limits_file"; then
-    echo "$limits_file already configured for $NON_ROOT_USER. No changes needed."
-else
-    echo "$limits_entry" >> "$limits_file"
-    echo "Updated $limits_file for $NON_ROOT_USER"
-fi
+#if grep -qE "^$NON_ROOT_USER\s+soft\s+nofile" "$limits_file"; then
+    #echo "$limits_file already configured for $NON_ROOT_USER. No changes needed."
+#else
+    #echo "$limits_entry" >> "$limits_file"
+    #echo "Updated $limits_file for $NON_ROOT_USER"
+#fi
 
 # Display current values
 echo "Current sysctl values:"
-sysctl net.ipv4.ip_unprivileged_port_start
+#sysctl net.ipv4.ip_unprivileged_port_start
 sysctl vm.max_map_count
 sysctl net.core.rmem_max
 sysctl net.core.wmem_max

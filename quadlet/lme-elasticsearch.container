@@ -1,5 +1,5 @@
 # lme-elasticsearch.container
-[Unit] 
+[Unit]
 Description=Elasticsearch Container Service
 Requires=lme-network.service lme-setup-certs.service
 After=lme-network.service lme-setup-certs.service
@@ -33,5 +33,4 @@ Volume=/opt/lme/config/elasticsearch.yml:/usr/share/elasticsearch/config/elastic
 Notify=healthy
 HealthCmd=CMD-SHELL curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'
 User=elasticsearch
-UserNS=auto:uidmapping=0:165536:3048,gidmapping=0:165536:3048
-#UserNS=auto
+

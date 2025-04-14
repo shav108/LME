@@ -6,8 +6,6 @@
   vars:
     clone_directory: "{{ clone_dir | default('~/LME') }}"
     install_user: "root"
-    storage_runroot: "{{ storage_runroot | default('/run/containers/storage') }}"
-    storage_graphroot: "{{ storage_graphroot | default('/var/lib/containers/storage') }}"
   tags: ['base', 'all']
 
   tasks:
@@ -41,6 +39,30 @@
       when: 
         -  (not optenv_file.stat.exists) and (not env_file.stat.exists)
 
+    - name: Get current working directory
+      set_fact:
+        cwd: "{{ lookup('env', 'PWD') }}"
+
+    - name: Find container files
+      find:
+        paths: "{{ cwd }}/containers"
+        patterns: "*.tar"
+      register: container_files
+
+    - name: Load container images
+      shell: "sudo podman load -i {{ item.path }}"
+      loop: "{{ container_files.files }}"
+
+    - name: Run podman image ls and capture output
+      shell: podman image ls | awk '/docker/{print $1 ":" $2}' 
+      register: podman_output 
+      become: yes
+   
+    - name: Write output to file
+      copy:
+        dest: ~/LME/config/containers.txt
+        content: "{{ podman_output.stdout }}"
+
     - name: Copy lme-environment.env to /opt/lme (only if it doesn't exist)
       command: "mv {{ clone_directory }}/config/lme-environment.env /opt/lme/lme-environment.env"
       become: yes
@@ -67,20 +89,6 @@
     - name: Ensure sudo access
       command: sudo -n true
       changed_when: false
-
-    - name: Setup /etc/subgid
-      lineinfile:
-        path: "/etc/subuid"
-        line: 'containers:165536:65536'
-        create: yes
-      become: yes
-
-    - name: Setup /etc/subgid
-      lineinfile:
-        path: "/etc/subgid"
-        line: 'containers:165536:65536'
-        create: yes
-      become: yes
 
 - name: Setup password information
   hosts: localhost
@@ -118,7 +126,7 @@
       set_fact:
         ansible_vault_password: "{{ vault_password.stdout }}"
 
-    #TODO: make this a bit nicer
+    #TODO: make this a bit nicer or integrate with AD
     - name: Check password complexity
       block:
         - name: Check password length
@@ -137,18 +145,6 @@
           set_fact:
             prefix: "{{ password_hash.stdout[0:5] }}"
             suffix: "{{ password_hash.stdout[5:] }}"
-
-        - name: Check against HIBP API
-          uri:
-            url: "https://api.pwnedpasswords.com/range/{{ prefix }}"
-            method: GET
-            return_content: yes
-          register: hibp_response
-
-        - name: Fail if password is found in breaches
-          fail:
-            msg: "The password has been found in breaches... this should only happen if you provided a password via the cli... choose a different password"
-          when: hibp_response.content | regex_search(suffix)
 
     - name: Create global config directory
       file:
@@ -183,11 +179,12 @@
         mode: '0700'
       when: not pass_file.stat.exists
 
-    - name: Ensure ANSIBLE_VAULT_PASSWORD_FILE is set in .profile
+    - name: Ensure ANSIBLE_VAULT_PASSWORD_FILE is set in .bashrc
       lineinfile:
-        path: /root/.profile
+        path: /root/.bashrc
         line: "export ANSIBLE_VAULT_PASSWORD_FILE=\"{{ password_file }}\""
         state: present
+        create: yes
 
     - name: Setup Podman secrets configuration
       copy:
@@ -228,8 +225,9 @@
         content: |
           [storage]
           driver = "overlay"
-          runroot = "{{ storage_runroot | default('/run/containers/storage') }}"
-          graphroot = "{{ storage_graphroot | default('/var/lib/containers/storage') }}"
+          runroot =  "/run/containers/storage"
+          graphroot = "/var/lib/containers/storage"
+
           [storage.options.overlay]
           mount_program = "/usr/bin/fuse-overlayfs"
 
@@ -244,116 +242,31 @@
     install_user: "{{ ansible_user_id }}"
   tags: ['base', 'all']
   tasks:
-    - name: Update apt cache
-      apt:
+    - name: Update dnf cache
+      dnf:
         update_cache: yes
       become: yes
 
+    # Changed this for RHEL 9 to use dnf and only install RHEL 9 packages
     - name: Install required packages
-      apt:
+      dnf:
         name:
           - jq
-          - uidmap
-          - nix-bin
-          - nix-setup-systemd
+          - podman
+          - ca-certificates
           - python3-pexpect
           - fuse-overlayfs
+          - container-tools
         state: present
       become: yes
 
-    - name: Add Nix channel
-      command: nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs
-      become: yes
-
-    - name: Update Nix channel
-      command: nix-channel --update
-      become: yes
-
-    - name: Add user to nix-users group
-      user:
-        name: "{{ install_user }}"
-        groups: nix-users
-        append: yes
-      become: yes
-
-    - name: Update PATH for Ansible execution
-      set_fact:
-        ansible_env: "{{ ansible_env | combine({'PATH': ansible_env.PATH ~ ':/nix/var/nix/profiles/default/bin'}) }}"
-
-    - name: Update PATH in user's profile
-      lineinfile:
-        path: "~/.profile"
-        line: 'export PATH=$PATH:/nix/var/nix/profiles/default/bin'
-        create: yes
-
-    - name: Update PATH in root's profile 
-      lineinfile:
-        path: "/root/.profile"
-        line: 'export PATH=$PATH:/nix/var/nix/profiles/default/bin'
-        create: yes
-      become: yes
-
-    - name: Update PATH in user's bashrc
-      lineinfile:
-        path: "~/.bashrc"
-        line: 'export PATH=$PATH:/nix/var/nix/profiles/default/bin'
-        create: yes
-
-    - name: Update PATH in root's bashrc
-      lineinfile:
-        path: "/root/.bashrc"
-        line: 'export PATH=$PATH:/nix/var/nix/profiles/default/bin'
-        create: yes
-      become: yes
-
-- name: Setup Podman
-  hosts: localhost
-  connection: local
-  become: no
-  vars:
-    clone_directory: "{{ clone_dir | default('~/LME') }}"
-    install_user: "{{ ansible_user_id }}"
-  tags: ['system', 'all']
-
-  handlers:
-    - name: restart nix-daemon
-      systemd:
-        name: nix-daemon
-        state: restarted
-        daemon_reload: yes
-      become: yes
-  tasks:
-    - name: Ensure Nix daemon is running
-      systemd:
-        name: nix-daemon
-        state: started
-        enabled: yes
-      become: yes
-      notify: restart nix-daemon
-
-    - name: Wait for Nix daemon to be ready
-      wait_for:
-        timeout: 10
-      when: ansible_play_hosts_all.index(inventory_hostname) == 0
-
-    - name: Install Podman using Nix
-      command: nix-env -iA nixpkgs.podman
-      become: yes
-      environment:
-        PATH: "{{ ansible_env.PATH }}"
-      register: podman_install
-      retries: 3
-      delay: 5
-      until: podman_install is not failed
-
-    - name: Set sysctl limits 
-      command: "{{ clone_directory }}/scripts/set_sysctl_limits.sh"
-      environment:
-        NON_ROOT_USER: "{{ install_user }}"
-      become: yes
-
-    - name: Link latest podman quadlet
-      command: "{{ clone_directory }}/scripts/link_latest_podman_quadlet.sh"
+    # On RHEL 9 ca-certificates file not found when starting up container services, so this was the fix     
+    - name: Create symbolic link for ca-certificates.crt
+      ansible.builtin.file:
+        src: /etc/ssl/certs/ca-bundle.crt
+        dest: /etc/ssl/certs/ca-certificates.crt
+        state: link
+        force: yes
       become: yes
 
 - name: set service user passwords
@@ -367,7 +280,7 @@
     #maybe check for each in the shell script below?
     - name: Register a variable, ignore errors and continue
       shell: |
-        source /root/.profile 
+        source /root/.bashrc 
         podman secret ls | grep -q elastic
       register: result
       become: yes
@@ -379,7 +292,7 @@
       
     - name: Set podman secret passwords
       shell: |
-        source /root/.profile 
+        source /root/.bashrc 
         password=$(</dev/urandom tr -dc A-Za-z0-9$@! | head -c30)
         while ! echo -n $password | grep -Eq '[$@!]+';do password=$(</dev/urandom tr -dc A-Za-z0-9$@! | head -c30); echo $password;done
         echo -n $password | podman secret create --driver shell --replace "{{ item }}" -
@@ -403,10 +316,6 @@
     install_user: "{{ ansible_user_id }}"
   tags: ['system', 'all']
   tasks:
-    - name: Enable linger for user
-      command: "loginctl enable-linger {{ install_user }}"
-      become: yes
-
     - name: Copy config files /opt/lme/config
       copy:
         src: "{{ clone_directory }}/config/"
@@ -469,18 +378,8 @@
         dest: /etc/containers/policy.json
       become: yes
 
-    - name: Pull containers
-      shell: |
-        export PATH=$PATH:/nix/var/nix/profiles/default/bin
-        podman pull {{ item }}
-      args:
-        executable: /bin/bash
-      loop: "{{ lookup('file', clone_directory + '/config/containers.txt').splitlines() }}"
-      become: yes
-
     - name: Tag containers
       shell: |
-        export PATH=$PATH:/nix/var/nix/profiles/default/bin
         podman image tag {{ item }} {{ item.split('/')[-1].split(':')[0] }}:LME_LATEST
       args:
         executable: /bin/bash
@@ -504,3 +403,11 @@
         state: started
         enabled: yes
       become: yes
+
+- name: Start Elastic Package Registry
+  podman_container:
+    name: elastic-package-registry
+    image: docker.elastic.co/package-registry/distribution:8.17.4
+    ports:
+      - "8080:8080"
+    state: started

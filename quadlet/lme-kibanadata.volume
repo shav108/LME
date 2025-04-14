@@ -1,4 +1,4 @@
-[Unit] 
+[Unit]
 PartOf=lme.service
 After=lme.service
 
@@ -6,6 +6,4 @@ After=lme.service
 
 [Volume]
 VolumeName=lme_kibanadata
-User=169584
-Group=169584
 Driver=local

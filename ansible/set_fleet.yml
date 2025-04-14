@@ -11,7 +11,7 @@
       Content-Type: "application/json"
     max_retries: 60
     delay_seconds: 10
-    debug_mode: false
+    debug_mode: true
 
   tasks:
     - name: Read lme-environment.env file

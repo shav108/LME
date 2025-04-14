@@ -34,11 +34,11 @@ echo_if_not_quiet() {
     fi
 }
 
-# Source the profile to ensure podman is available in the current shell
-if [ -f ~/.profile ]; then
-    . ~/.profile 
+# Source the profile (changed to .bashrc) to ensure podman is available in the current shell
+if [ -f ~/.bashrc ]; then
+    . ~/.bashrc 
 else
-    echo "~/.profile not found. Make sure podman is in your PATH."
+    echo "~/.bashrc not found. Make sure podman is in your PATH."
     return 1
 fi
 
@@ -72,7 +72,7 @@ while IFS= read -r line; do
         var_name=$name
         
         # Get the real password using ansible-vault
-        secret_value=$(sudo -i ansible-vault view /etc/lme/vault/$id)
+        secret_value=$(sudo -i ansible-vault view --vault-password-file /etc/lme/pass.sh /etc/lme/vault/$id)
         
         # Add export command to the string
         export_commands+="export $var_name='$secret_value'; "

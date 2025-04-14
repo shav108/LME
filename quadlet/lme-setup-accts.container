@@ -24,6 +24,3 @@ PodmanArgs=--network-alias lme-setup --health-interval=2s
 Volume=lme_certs:/usr/share/elasticsearch/config/certs
 Volume=/opt/lme/config/setup:/usr/share/elasticsearch/config/setup
 User=0
-#match permissions so we can write to the lme_certs volume
-UserNS=container:lme-elasticsearch
-

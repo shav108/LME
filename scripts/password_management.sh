@@ -96,8 +96,8 @@ EOF
 chmod 700 "$PASSWORD_FILE"
 
 # Set Ansible vault password file variable
-if ! grep -q "ANSIBLE_VAULT_PASSWORD_FILE" /root/.profile; then
-    echo "export ANSIBLE_VAULT_PASSWORD_FILE=\"$PASSWORD_FILE\"" >> /root/.profile
+if ! grep -q "ANSIBLE_VAULT_PASSWORD_FILE" /root/.bashrc; then
+    echo "export ANSIBLE_VAULT_PASSWORD_FILE=\"$PASSWORD_FILE\"" >> /root/.bashrc
 fi
 
 # Clear sensitive environment variables
