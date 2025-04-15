@@ -14,7 +14,7 @@
 
 # Packages
 
-Local repo (/repo) created from RHEL 9 ISO via:
+Local repo, `/repo`, created from RHEL 9 ISO via:
 
 https://access.redhat.com/downloads/content/rhel
 
@@ -168,7 +168,7 @@ wget -c $(curl -s -X GET https://cti.wazuh.com/api/v1/catalog/contexts/vd_1.0.0/
 
 The LME server's folder `/opt/lme/config/wazuh_cves` is where to put the zip file in order for the lme-wazuh-manager container to see it.
 
-The Wazuh management server's configuration file (/var/ossec/etc/ossec.conf) is set to point to the downloaded zip file:
+The Wazuh management server's configuration file, `/var/ossec/etc/ossec.conf`, is set to point to the downloaded zip file:
 
 ```
 <vulnerability-detection>
@@ -182,7 +182,7 @@ The Wazuh management server's configuration file (/var/ossec/etc/ossec.conf) is 
 This is typically set to check every hour, but for an offline solution this will have to be manually done via sneaker net as much as possible.
 There are other ways to automate this, but it is beyond the scope of this.
 
-When copying the zip file to the LME server, save it to /opt/lme/config/wazuh_cves/cves.file.zip on the LME server which is a shared volume with the running container.
+When copying the zip file to the LME server, save it to `/opt/lme/config/wazuh_cves/cves.file.zip` on the LME server which is a shared volume with the running container.
 
 
 # Command Fu
