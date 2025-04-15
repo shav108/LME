@@ -9,6 +9,7 @@
 - Designed to run air gapped with no access to internet.
 - Podman runs rootful instead of rootless.
 - Another container is used for a local Elastic EPR repo.
+- Wazuh config was changed to allow collection of syslog from anywhere (can be filtered).
 - All the rest of the documentation from CISA LME applies.
 
 # Packages
@@ -29,13 +30,15 @@ enabled=1
 gpgcheck=0
 ```
 
-`sudo dnf install ansible-core podman -y`
+```
+sudo dnf install ansible-core podman -y
+```
 
 
 # Containers
 
 Just like the RHEL packages, containers will have to be downloaded manually.
-As of this writing these were used:
+As of this writing these containers are being used:
 
 ```
 docker.elastic.co/elasticsearch/elasticsearch:8.17.4
@@ -48,7 +51,9 @@ docker.elastic.co/package-registry/distribution:8.17.4
 
 On a machine with internet: 
 
-`docker pull **container**`
+```
+docker pull **container**
+```
 
 or
 
@@ -58,19 +63,20 @@ or
 
 Example:
 
-`podman save -o image1.tar someContainerImage:2.6`
+```
+# Save one container to tar file
+podman save -o someContainermage-2.6.tar someContainerImage:2.6
 
-It's possible to save multiple images into one tar file
-
-`podman save --output images.tar image1 image2 image3`
+# It's possible to save multiple images into one tar file
+podman save --output images.tar image1 image2 image3
+```
 
 ## Loading images
 Transfer the container images to the containers folder and Ansible will load them automatically.
 
-Current folder as of this version looks like this:
-
 ```
-ls ~/LME/containers/
+> ls ~/LME/containers/
+
 elastalert2_latest.tar
 elastic-agent-8.17.4.tar
 elasticsearch-8.17.4.tar
@@ -79,26 +85,31 @@ package-reg-distribution-8.17.4.tar
 wazuh-manger-4.9.1.tar
 ```
 
-Manual load would be something like:
+Manual loadng of containers:
 
-`sudo podman load -i <file_name>.tar`
-
-Verify:
-
-`sudo podman image ls`
+```
+sudo podman load -i <file_name>.tar
+sudo podman image ls # to verify
+```
 
 # Configs
 
 ## lme-environment.env
 
-In the config folder copy the example.env to lme-environment.env
+In the `config` folder copy the `example.env` to `lme-environment.env`.
 
-`cp config/{example,lme-environment}.env`
+```
+cp ~/LME/config/{example,lme-environment}.env
+```
 
-Grab the host IP and set it to IPVAR in lme-environment.env. Ansible will fail if this is not set.
+Grab the host IP (`hostname -I`) and set it as the `IPVAR` variable in `lme-environment.env`. 
+Ansible will fail, and remind of this, if this is not set.
 
 Example:
-`IPVAR=192.168.1.20`
+
+```
+IPVAR=192.168.1.20
+```
 
 In lme-environment.env, also change the STACK_VERSION variable to match the current version of Elastic.
 
@@ -106,12 +117,14 @@ This build is running 8.17.4 so:
 
 Example:
 
-`STACK_VERSION=8.17.4`
+```
+STACK_VERSION=8.17.4
+```
 
 ## kibana.yml
 
-- This is where the airgapped setting is.
-- Also where to point to the fleet registry container.
+- This is where the airgapped setting goes.
+- Also where to point to the local fleet registry container.
 
 Example:
 
@@ -121,6 +134,69 @@ server.publicBaseUrl: "https://10.254.255.20:5601"
 telemetry.enabled: "true"
 xpack.fleet.isAirGapped: "true"
 xpack.fleet.registryUrl: "http://10.254.255.20:8080"
+```
+
+## Wazuh
+
+The Wazuh config was changed to also collect syslog messages.
+The `allowed-ips` line can be added multiple times to allow for specific filtering.
+Adding this section to the `wazuh_manager.conf` file allows anything to send syslog traffic to Wazuh.
+It becomes Wazuh's `ossec.conf` once everything gets built out.
+
+~/LME/config/wazuh_cluster/wazuh_manager.conf
+
+```
+  <remote>
+    <connection>syslog</connection>
+    <port>514</port>
+    <protocol>udp</protocol>
+    <allowed-ips>0.0.0.0/0</allowed-ips>
+  </remote>
+```
+
+# Updates
+
+## Wazuh
+
+For Wazuh vulnerability detection, CVEs can be downloaded in a zip file.
+
+On a computer with internet, download the latest:
+
+```
+wget -c $(curl -s -X GET https://cti.wazuh.com/api/v1/catalog/contexts/vd_1.0.0/consumers/vd_4.8.0|jq -r '.data.last_snapshot_link')
+```
+
+The LME server's folder `/opt/lme/config/wazuh_cves` is where to put the zip file in order for the lme-wazuh-manager container to see it.
+
+The Wazuh management server's configuration file (/var/ossec/etc/ossec.conf) is set to point to the downloaded zip file:
+
+```
+<vulnerability-detection>
+    <enabled>yes</enabled>
+    <index-status>yes</index-status>
+    <feed-update-interval>60m</feed-update-interval>
+    <offline-url>file:///var/ossec/var/db/vulnerability-detector/cves.file.zip</offline-url>
+</vulnerability-detection>
+```
+
+This is typically set to check every hour, but for an offline solution this will have to be manually done via sneaker net as much as possible.
+There are other ways to automate this, but it is beyond the scope of this.
+
+When copying the zip file to the LME server, save it to /opt/lme/config/wazuh_cves/cves.file.zip on the LME server which is a shared volume with the running container.
+
+
+# Command Fu
+
+API calls and such that can be used on the LME server
+```
+## Elastic`
+curl -k -u elastic:$(sudo -i ansible-vault view /etc/lme/vault/$(sudo -i podman secret ls|awk '/elastic/{printf "%s", $1}')) https://localhost:9200|jq
+curl -k -u elastic:$(sudo -i ansible-vault view /etc/lme/vault/$(sudo -i podman secret ls|awk '/elastic/{printf "%s", $1}')) https://localhost:9200/_cluster/health|jq
+curl -k -u elastic:$(sudo -i ansible-vault view /etc/lme/vault/$(sudo -i podman secret ls|awk '/elastic/{printf "%s", $1}')) https://localhost:9200/_nodes|jq
+
+## Fleet
+curl -k -u elastic:$(sudo -i ansible-vault view /etc/lme/vault/$(sudo -i podman secret ls|awk '/elastic/{printf "%s", $1}')) https://localhost:5601/api/fleet/settings|jq
+curl -k -u elastic:$(sudo -i ansible-vault view /etc/lme/vault/$(sudo -i podman secret ls|awk '/elastic/{printf "%s", $1}')) https://localhost:5601/api/fleet/agents|jq
 ```
 
 
